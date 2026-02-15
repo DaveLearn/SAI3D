@@ -18,6 +18,12 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
+
+# Prevent Open3D from loading its ML sub-module, which pulls in sklearn and
+# triggers a numpy binary-incompatibility error in some environments.
+import sys as _sys, types as _types
+_sys.modules.setdefault("open3d.ml", _types.ModuleType("open3d.ml"))
+
 import open3d as o3d
 import torch
 from scipy.spatial.transform import Rotation as R
@@ -31,6 +37,8 @@ from initializerdefs import (
     SceneSetup,
 )
 from psdframe import Frame
+
+from helpers.debug_visualize import DebugVisualizer
 
 logger = logging.getLogger("sai3d-segmenter")
 
@@ -607,15 +615,21 @@ def initialize_scene(
     if intermediate_outputs_path is not None:
         intermediate_outputs_path.mkdir(parents=True, exist_ok=True)
 
+    # Debug visualizer (activated by SAI3D_DEBUG=1 env var)
+    dbg_dir = (intermediate_outputs_path if intermediate_outputs_path is not None else Path("/tmp/sai3d_work")) / "debug"
+    dbg = DebugVisualizer(dbg_dir)
+
     # ---- 1. Convert frames ----
     logger.info("Converting %d observation frames …", len(observations.frames))
     frames = [get_dataset_frame_from_observation_frame(f) for f in observations.frames]
+    dbg.save_frames(frames)
 
     # ---- 2. TSDF mesh reconstruction ----
     logger.info("Reconstructing TSDF mesh …")
     mesh = _extract_mesh_bounded_with_res(frames, depth_trunc=2, mesh_res=1024)
     mesh_vertices = np.asarray(mesh.vertices).astype(np.float32)
     logger.info("Mesh has %d vertices, %d triangles", len(mesh.vertices), len(mesh.triangles))
+    dbg.save_mesh(mesh)
 
     # ---- 3. Export PLY + run Segmentator ----
     work_dir = intermediate_outputs_path if intermediate_outputs_path is not None else Path("/tmp/sai3d_work")
@@ -629,6 +643,7 @@ def initialize_scene(
         seg_data = json.load(f)
     seg_ids = np.array(seg_data["segIndices"], dtype=np.int32)
     logger.info("Loaded %d superpoint assignments from %s", len(seg_ids), segs_json_path)
+    dbg.save_superpoints(mesh, seg_ids)
 
     # ---- 4. Semantic-SAM 2D masks ----
     logger.info("Generating Semantic-SAM 2D masks …")
@@ -665,9 +680,11 @@ def initialize_scene(
     depth_h, depth_w = depths_np.shape[1], depths_np.shape[2]
 
     logger.info("Masks shape: %s, Depths shape: %s", masks_np.shape, depths_np.shape)
+    dbg.save_masks_2d(frames, masks_np)
 
     # ---- 5. Workspace voxel grid ----
     workspace_voxels = get_workspace_voxels(scene)
+    dbg.save_workspace_voxels(workspace_voxels)
 
     # ---- 6. Run SAI3D ----
     logger.info("Running SAI3D progressive region growing …")
@@ -685,8 +702,10 @@ def initialize_scene(
     )
     vertex_labels = pipeline.run()
     logger.info("SAI3D produced %d unique labels", len(np.unique(vertex_labels)))
+    dbg.save_segmented_mesh(mesh, vertex_labels)
 
     # ---- 7. Filter by workspace + remove table ----
+    vertex_labels_raw = vertex_labels.copy()  # save pre-filter copy for debug comparison
     vertex_labels = _filter_labels_by_workspace(mesh_vertices, vertex_labels, workspace_voxels)
 
     # Convert vertex labels to per-frame pixel masks for table detection
@@ -717,6 +736,11 @@ def initialize_scene(
         for name in instance_groups:
             instance_groups[name][instance_groups[name] == table_id] = 0
 
+    # Build final vertex labels for debug (apply same filtering to vertex array)
+    vertex_labels_filtered = vertex_labels.copy()
+    vertex_labels_filtered[~np.isin(vertex_labels_filtered, valid_ids)] = 0
+    dbg.save_filtered_mesh(mesh, vertex_labels_raw, vertex_labels_filtered, table_id, valid_ids)
+
     # ---- 8. Build InstanceMaskObjectsDef ----
     frame_ids: List[int] = []
     pixel_masks: List[np.ndarray] = []
@@ -737,4 +761,5 @@ def initialize_scene(
     )
 
     logger.info("Initialized %d objects (after table removal)", len(valid_ids))
+    dbg.save_pixel_masks(frames, instance_groups)
     return ObjectSegmentations(object_segmentations=instance_mask_objects)

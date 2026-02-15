@@ -52,7 +52,7 @@ channels = ["conda-forge"]
 platforms = ["linux-64"]
 
 [tool.pixi.pypi-options.dependency-overrides]
-numpy = ">=1.23.2"
+numpy = ">=2.0"
 
 [tool.pixi.pypi-dependencies]
 sai3d = { path = ".", editable = true }
@@ -73,6 +73,7 @@ sam_auto_generation = "python sam_auto_generation.py"
 sam_scannet = "bash scripts/sam_scannet.sh"
 seg_scannet = "bash scripts/seg_scannet.sh"
 run_openmask3d_scannet200 = "bash scripts/run_openmask3d_scannet200.sh"
+view = "python view_ply.py"
 
 [tool.pixi.pypi-options]
 no-build-isolation = ["detectron2"]
