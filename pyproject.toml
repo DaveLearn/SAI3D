@@ -1,0 +1,79 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sai3d"
+version = "0.1.0"
+description = "Segment Any Instance in 3D with Open Vocabularies"
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    # Core pipeline (sai3d.py + sam_auto_generation.py)
+    "numpy>=1.23.1",
+    "scipy>=1.14.1",
+    "open3d>=0.18.0",
+    "torch>=2.4.0",
+    "torchvision>=0.19.0",
+    "opencv-python>=4.8.1.78",
+    "natsort>=8.4.0",
+    "matplotlib==3.8.4",
+    "tqdm>=4.64.1",
+    "plyfile>=1.0.3",
+    "pillow>=9.4.0",
+    "pyyaml>=6.0.1",
+    # Semantic-SAM dependencies
+    "timm==0.4.12",
+    "einops>=0.7.0",
+    "fvcore==0.1.5.post20221221",
+    "transformers==4.34.0",
+    "sentencepiece>=0.1.99",
+    "ftfy==6.1.1",
+    "regex==2023.10.3",
+    "pycocotools==2.0.7",
+    "shapely==1.8.0",
+    "scikit-image>=0.21.0",
+    "kornia==0.7.0",
+    "cython==3.0.2",
+    "ninja==1.10.2.3",
+    "setuptools",
+   
+    "panopticapi @ git+https://github.com/cocodataset/panopticapi.git",
+    # External segmenter CLI
+    "tyro>=0.8.13",
+]
+
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[tool.pixi.pypi-options.dependency-overrides]
+numpy = ">=1.23.2"
+
+[tool.pixi.pypi-dependencies]
+sai3d = { path = ".", editable = true }
+semantic-sam = { path = "./Semantic-SAM", editable = true }
+detectron2 = { git="https://github.com/MaureenZOU/detectron2-xyz.git" }
+psdframe = { git = "ssh://git@github.com/DaveLearn/deg.git", tag="initializerdefs/v0.5.1", subdirectory = "packages/psdframe" }
+initializerdefs = { git = "ssh://git@github.com/DaveLearn/deg.git", subdirectory = "packages/initializerdefs", tag="initializerdefs/v0.5.1" }
+
+[tool.pixi.dependencies]
+cuda-version = "12.6.*"
+cuda = ">=12.6.3,<13"
+geos = ">=3.14.1,<4"
+
+[tool.pixi.tasks]
+segment = "python sai3d.py"
+segment_external = "python segment.py"
+sam_auto_generation = "python sam_auto_generation.py"
+sam_scannet = "bash scripts/sam_scannet.sh"
+seg_scannet = "bash scripts/seg_scannet.sh"
+run_openmask3d_scannet200 = "bash scripts/run_openmask3d_scannet200.sh"
+
+[tool.pixi.pypi-options]
+no-build-isolation = ["detectron2"]
+
