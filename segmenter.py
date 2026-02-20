@@ -435,7 +435,7 @@ def _make_args_namespace() -> types.SimpleNamespace:
         similar_metric=SIMILAR_METRIC,
         view_freq=VIEW_FREQ,
         dis_decay=DIS_DECAY,
-        use_torch=True,
+        use_torch=False,
         thres_trunc=THRES_TRUNC,
         thres_merge=THRES_MERGE,
         from_points_thres=FROM_POINTS_THRES,
@@ -463,9 +463,19 @@ class PipelineSAI3D:
         depth_w: int,
     ):
         from sai3d_base import SAI3DBase
+        from sai3d import ScanNet_SAI3D
 
         args = _make_args_namespace()
         self.base = SAI3DBase(mesh_vertices.astype(np.float32), args)
+
+        seg_ids_source = seg_ids
+
+        def _get_seg_data(self_ref, **kwargs):
+            if kwargs.get("seg_ids") is None and kwargs.get("points_obj_labels_path") is None:
+                kwargs["seg_ids"] = seg_ids_source
+            return ScanNet_SAI3D.get_seg_data(self_ref, **kwargs)
+
+        self.base.get_seg_data = types.MethodType(_get_seg_data, self.base)
 
         # Set up all the attributes SAI3DBase.assign_label() needs
         self.base.masks = masks  # (M, H, W)
@@ -480,26 +490,24 @@ class PipelineSAI3D:
         self.base.DW = depth_w
         self.base.base_dir = ""
         self.base.scene_id = ""
+        self.base.scannetpp = False
         self._seg_ids = seg_ids
+        self._scannet_seg_ids = None
 
     def run(self) -> np.ndarray:
         """Run the full SAI3D pipeline and return per-vertex labels."""
         thres_connect = np.linspace(THRES_CONNECT_START, THRES_CONNECT_END, THRES_CONNECT_STAGES)
 
-        # Load superpoints from pre-computed seg_ids
-        # We call get_seg_data from the ScanNet_SAI3D subclass pattern
-        from sai3d import ScanNet_SAI3D
-
-        # We reuse the get_seg_data logic directly on our base object
-        # The method is on ScanNet_SAI3D, so we temporarily create a stub
-        # that delegates to the same code
-        seg_ids, seg_num, seg_members, seg_indirect_neighbors = ScanNet_SAI3D.get_seg_data(
-            self.base,
-            base_dir="",
-            scene_id="",
-            max_neighbor_distance=MAX_NEIGHBOR_DISTANCE,
-            seg_ids=self._seg_ids,
-        )
+        if self._scannet_seg_ids is None:
+            seg_ids, seg_num, seg_members, seg_indirect_neighbors = self.base.get_seg_data(
+                base_dir="",
+                scene_id="",
+                max_neighbor_distance=MAX_NEIGHBOR_DISTANCE,
+                seg_ids=self._seg_ids,
+            )
+            self._scannet_seg_ids = (seg_ids, seg_num, seg_members, seg_indirect_neighbors)
+        else:
+            seg_ids, seg_num, seg_members, seg_indirect_neighbors = self._scannet_seg_ids
         self.base.seg_ids = seg_ids
         self.base.seg_num = seg_num
         self.base.seg_members = seg_members
