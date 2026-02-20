@@ -11,6 +11,7 @@ import copy
 import json
 import logging
 import math
+import os
 import subprocess
 import sys
 import types
@@ -18,12 +19,16 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
+import certifi
 from plyfile import PlyData, PlyElement
 
 # Prevent Open3D from loading its ML sub-module, which pulls in sklearn and
 # triggers a numpy binary-incompatibility error in some environments.
 import sys as _sys, types as _types
 _sys.modules.setdefault("open3d.ml", _types.ModuleType("open3d.ml"))
+
+os.environ.setdefault("SSL_CERT_FILE", certifi.where())
+os.environ.setdefault("REQUESTS_CA_BUNDLE", certifi.where())
 
 import open3d as o3d
 import torch
@@ -253,8 +258,13 @@ def _ensure_checkpoint() -> Path:
     logger.info("Downloading Semantic-SAM checkpoint from %s …", CHECKPOINT_URL)
     CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
     import urllib.request
+    import ssl
+    import certifi
 
-    urllib.request.urlretrieve(CHECKPOINT_URL, str(ckpt_path))
+    ssl_context = ssl.create_default_context(cafile=certifi.where())
+    with urllib.request.urlopen(CHECKPOINT_URL, context=ssl_context) as response:
+        with open(ckpt_path, "wb") as out_file:
+            out_file.write(response.read())
     logger.info("Checkpoint saved to %s", ckpt_path)
     return ckpt_path
 
@@ -263,10 +273,23 @@ def _build_mask_generator():
     """Build Semantic-SAM mask generator (instance level)."""
     ckpt_path = _ensure_checkpoint()
     from semantic_sam import SemanticSamAutomaticMaskGenerator, build_semantic_sam
+    from semantic_sam.build_semantic_sam import __file__ as _semantic_sam_build_path
+    from contextlib import contextmanager
 
-    model = build_semantic_sam(model_type="L", ckpt=str(ckpt_path))
-    generator = SemanticSamAutomaticMaskGenerator(model, level=[3])
-    return generator
+    @contextmanager
+    def _semantic_sam_repo_cwd():
+        repo_root = Path(_semantic_sam_build_path).resolve().parent.parent
+        current = Path.cwd()
+        os.chdir(repo_root)
+        try:
+            yield
+        finally:
+            os.chdir(current)
+
+    with _semantic_sam_repo_cwd():
+        model = build_semantic_sam(model_type="L", ckpt=str(ckpt_path))
+        generator = SemanticSamAutomaticMaskGenerator(model, level=[3])
+        return generator
 
 
 def _generate_masks_for_frame(frame: Frame, mask_generator, cache_dir: Optional[Path] = None) -> np.ndarray:
