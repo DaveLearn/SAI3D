@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
+from plyfile import PlyData, PlyElement
 
 # Prevent Open3D from loading its ML sub-module, which pulls in sklearn and
 # triggers a numpy binary-incompatibility error in some environments.
@@ -319,6 +320,7 @@ def _ensure_segmentator_binary() -> Path:
 def _run_segmentator(ply_path: Path, k_thresh: float = K_THRESH, seg_min_verts: int = SEG_MIN_VERTS) -> Path:
     """Run Segmentator on a PLY mesh, returns path to the output segs.json."""
     binary = _ensure_segmentator_binary()
+    ply_path = _ensure_segmentator_ply(ply_path)
     # Output path follows the convention: <basename>.<kThresh>.segs.json
     expected_output = ply_path.parent / f"{ply_path.stem}.{k_thresh}.segs.json"
     if expected_output.exists():
@@ -345,6 +347,57 @@ def _run_segmentator(ply_path: Path, k_thresh: float = K_THRESH, seg_min_verts: 
 
     logger.info("Superpoints saved to %s", expected_output)
     return expected_output
+
+
+def _ensure_segmentator_ply(ply_path: Path) -> Path:
+    """Ensure PLY uses float32 verts and uint32 face indices."""
+    try:
+        ply = PlyData.read(str(ply_path))
+    except Exception as exc:
+        raise RuntimeError(f"Failed to read PLY {ply_path}: {exc}")
+
+    if "vertex" not in ply or "face" not in ply:
+        raise RuntimeError(f"PLY missing vertex/face elements: {ply_path}")
+
+    v = ply["vertex"].data
+    if not all(name in v.dtype.names for name in ("x", "y", "z")):
+        raise RuntimeError(f"PLY vertex missing x/y/z: {ply_path}")
+
+    verts = np.stack([v["x"], v["y"], v["z"]], axis=1)
+    verts_ok = verts.dtype == np.float32
+
+    f = ply["face"].data
+    face_prop = None
+    for name in ("vertex_indices", "vertex_index"):
+        if name in f.dtype.names:
+            face_prop = name
+            break
+    if face_prop is None:
+        raise RuntimeError(f"PLY face missing vertex_indices: {ply_path}")
+
+    faces = np.vstack(f[face_prop])
+    faces_ok = faces.dtype == np.uint32 and faces.shape[1] == 3
+
+    if verts_ok and faces_ok and face_prop == "vertex_indices":
+        return ply_path
+
+    fixed_path = ply_path.with_suffix("")
+    fixed_path = fixed_path.with_name(f"{fixed_path.name}.segmentator.ply")
+
+    verts = verts.astype(np.float32)
+    faces = faces[:, :3].astype(np.uint32)
+
+    verts_el = np.empty(verts.shape[0], dtype=[("x", "f4"), ("y", "f4"), ("z", "f4")])
+    verts_el["x"], verts_el["y"], verts_el["z"] = verts[:, 0], verts[:, 1], verts[:, 2]
+
+    face_el = np.empty(faces.shape[0], dtype=[("vertex_indices", "u4", (3,))])
+    face_el["vertex_indices"] = faces
+
+    PlyData([PlyElement.describe(verts_el, "vertex"), PlyElement.describe(face_el, "face")], text=False).write(
+        str(fixed_path)
+    )
+    logger.info("Wrote Segmentator-friendly PLY to %s", fixed_path)
+    return fixed_path
 
 
 # ---------------------------------------------------------------------------

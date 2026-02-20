@@ -138,3 +138,4 @@ dmypy.json
 *.pth
 outputs/
 test_data/
+Segmentator/segmentator

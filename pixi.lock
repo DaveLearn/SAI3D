@@ -5,6 +5,8 @@ environments:
     - url: https://conda.anaconda.org/conda-forge/
     indexes:
     - https://pypi.org/simple
+    options:
+      pypi-prerelease-mode: if-necessary-or-explicit
     packages:
       linux-64:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/_openmp_mutex-4.5-20_gnu.conda
@@ -274,7 +276,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/52/65/d212822d0f29afecbad20cc3b3f41b8eeb4b47bea728602b8ce0b2d347f5/ninja-1.10.2.3-py2.py3-none-manylinux_2_5_x86_64.manylinux1_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/a6/0a/0d20d2c0f16be91b9fa32a77b76c60f9baf6eba419e5ef5deca17af9c582/nltk-3.8.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/dc/9d/d0afc4cf915edd8eadd9b2ab5b696242886ee4f97720d9322650d66a88c6/numba-0.63.1-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
-      - pypi: https://files.pythonhosted.org/packages/1b/46/6fa4ea94f1ddf969b2ee941290cca6f1bfac92b53c76ae5f44afe17ceb69/numpy-2.4.2-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
+      - pypi: https://files.pythonhosted.org/packages/3a/d0/edc009c27b406c4f9cbc79274d6e46d634d139075492ad055e3d68445925/numpy-1.26.4-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/dc/61/e24b560ab2e2eaeb3c839129175fb330dfcfc29e5203196e5541a4c44682/nvidia_cublas_cu12-12.8.4.1-py3-none-manylinux_2_27_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/f8/02/2adcaa145158bf1a8295d83591d22e4103dbfd821bcaf6f3f53151ca4ffa/nvidia_cuda_cupti_cu12-12.8.90-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/05/6b/32f747947df2da6994e999492ab306a903659555dddc0fbdeb9d71f75e52/nvidia_cuda_nvrtc_cu12-12.8.93-py3-none-manylinux2010_x86_64.manylinux_2_12_x86_64.whl
@@ -1548,45 +1550,45 @@ packages:
   - diffusers ; extra == 'sd'
   - triton==2.0.0.dev20221202 ; extra == 'sd'
   - triton>=2.1.0 ; extra == 'triton'
+  - mpi4py ; extra == 'all'
+  - autodoc-pydantic<2.0.0 ; extra == 'all'
+  - neural-compressor==2.1.0 ; extra == 'all'
+  - pytest-forked ; extra == 'all'
+  - hjson ; extra == 'all'
+  - tensorboard ; extra == 'all'
+  - recommonmark ; extra == 'all'
+  - triton>=2.1.0 ; extra == 'all'
+  - tabulate ; extra == 'all'
+  - xgboost ; extra == 'all'
+  - py-cpuinfo ; extra == 'all'
+  - lm-eval==0.3.0 ; extra == 'all'
+  - sphinx ; extra == 'all'
+  - torchvision ; extra == 'all'
+  - triton==2.0.0.dev20221202 ; extra == 'all'
+  - pytest-randomly ; extra == 'all'
+  - tqdm ; extra == 'all'
+  - google ; extra == 'all'
+  - importlib-metadata>=4 ; extra == 'all'
   - transformers ; extra == 'all'
   - mup ; extra == 'all'
-  - pydantic<2.0.0 ; extra == 'all'
-  - coverage ; extra == 'all'
-  - transformers[sentencepiece] ; extra == 'all'
-  - pytest-forked ; extra == 'all'
-  - xgboost ; extra == 'all'
-  - hjson ; extra == 'all'
-  - lm-eval==0.3.0 ; extra == 'all'
-  - py-cpuinfo ; extra == 'all'
-  - importlib-metadata>=4 ; extra == 'all'
-  - torch ; extra == 'all'
-  - sphinx-rtd-theme ; extra == 'all'
-  - recommonmark ; extra == 'all'
-  - clang-format==16.0.2 ; extra == 'all'
-  - diffusers ; extra == 'all'
   - pytest-xdist ; extra == 'all'
-  - future ; extra == 'all'
-  - sphinx ; extra == 'all'
-  - google ; extra == 'all'
-  - psutil ; extra == 'all'
-  - docutils<0.18 ; extra == 'all'
   - pre-commit>=2.20.0 ; extra == 'all'
-  - tqdm ; extra == 'all'
-  - accelerate ; extra == 'all'
-  - pytest-randomly ; extra == 'all'
-  - pytest ; extra == 'all'
-  - triton>=2.1.0 ; extra == 'all'
-  - wandb ; extra == 'all'
-  - autodoc-pydantic<2.0.0 ; extra == 'all'
-  - tensorboard ; extra == 'all'
-  - tabulate ; extra == 'all'
-  - triton==2.0.0.dev20221202 ; extra == 'all'
-  - mpi4py ; extra == 'all'
-  - packaging ; extra == 'all'
-  - triton==1.0.0 ; extra == 'all'
-  - neural-compressor==2.1.0 ; extra == 'all'
+  - docutils<0.18 ; extra == 'all'
+  - pydantic<2.0.0 ; extra == 'all'
+  - transformers[sentencepiece] ; extra == 'all'
+  - diffusers ; extra == 'all'
   - protobuf ; extra == 'all'
-  - torchvision ; extra == 'all'
+  - torch ; extra == 'all'
+  - triton==1.0.0 ; extra == 'all'
+  - pytest ; extra == 'all'
+  - coverage ; extra == 'all'
+  - future ; extra == 'all'
+  - sphinx-rtd-theme ; extra == 'all'
+  - accelerate ; extra == 'all'
+  - packaging ; extra == 'all'
+  - psutil ; extra == 'all'
+  - clang-format==16.0.2 ; extra == 'all'
+  - wandb ; extra == 'all'
 - pypi: git+https://github.com/MaureenZOU/detectron2-xyz.git#42121d75e10d9f858f3a91b6a39f5722c02868f0
   name: detectron2
   version: '0.6'
@@ -3770,11 +3772,11 @@ packages:
   - llvmlite>=0.46.0.dev0,<0.47
   - numpy>=1.22,<2.4
   requires_python: '>=3.10'
-- pypi: https://files.pythonhosted.org/packages/1b/46/6fa4ea94f1ddf969b2ee941290cca6f1bfac92b53c76ae5f44afe17ceb69/numpy-2.4.2-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
+- pypi: https://files.pythonhosted.org/packages/3a/d0/edc009c27b406c4f9cbc79274d6e46d634d139075492ad055e3d68445925/numpy-1.26.4-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
   name: numpy
-  version: 2.4.2
-  sha256: c02ef4401a506fb60b411467ad501e1429a3487abca4664871d9ae0b46c8ba32
-  requires_python: '>=3.11'
+  version: 1.26.4
+  sha256: 666dbfb6ec68962c033a450943ded891bed2d54e6755e35e5835d63f4f6931d5
+  requires_python: '>=3.9'
 - pypi: https://files.pythonhosted.org/packages/dc/61/e24b560ab2e2eaeb3c839129175fb330dfcfc29e5203196e5541a4c44682/nvidia_cublas_cu12-12.8.4.1-py3-none-manylinux_2_27_x86_64.whl
   name: nvidia-cublas-cu12
   version: 12.8.4.1
@@ -4519,7 +4521,7 @@ packages:
 - pypi: ./
   name: sai3d
   version: 0.1.0
-  sha256: df05488257ca8d10529bfb6a812f7b61fe1530f22ced6f90d627476c5689f956
+  sha256: 0798a5ba849b09d0f4e37fff25f4c34520a202a14a9593971a0acfa5e0dcc157
   requires_dist:
   - numpy>=1.23.1
   - scipy>=1.14.1
@@ -4550,7 +4552,6 @@ packages:
   - panopticapi @ git+https://github.com/cocodataset/panopticapi.git
   - tyro>=0.8.13
   requires_python: '>=3.11,<3.12'
-  editable: true
 - pypi: https://files.pythonhosted.org/packages/22/c3/c5f3c351d6337a18d07c3fb04475626c106cd3dc3d59b85ec50d07656db0/scikit_image-0.21.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
   name: scikit-image
   version: 0.21.0
@@ -4778,7 +4779,6 @@ packages:
   - gradio==3.42.0
   - openai-whisper
   requires_python: '>=3.8'
-  editable: true
 - pypi: https://files.pythonhosted.org/packages/6a/23/8146aad7d88f4fcb3a6218f41a60f6c2d4e3a72de72da1825dc7c8f7877c/semantic_version-2.10.0-py2.py3-none-any.whl
   name: semantic-version
   version: 2.10.0

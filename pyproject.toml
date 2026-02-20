@@ -52,7 +52,7 @@ channels = ["conda-forge"]
 platforms = ["linux-64"]
 
 [tool.pixi.pypi-options.dependency-overrides]
-numpy = ">=2.0"
+numpy = "<2.0"
 
 [tool.pixi.pypi-dependencies]
 sai3d = { path = ".", editable = true }
@@ -65,6 +65,7 @@ initializerdefs = { git = "ssh://git@github.com/DaveLearn/deg.git", subdirectory
 cuda-version = "12.6.*"
 cuda = ">=12.6.3,<13"
 geos = ">=3.14.1,<4"
+cxx-compiler = ">=1.10.0,<2"
 
 [tool.pixi.tasks]
 segment = "python sai3d.py"
