@@ -8,6 +8,7 @@ compared against frame-seg-init on the same TSDF mesh and workspace filter.
 from __future__ import annotations
 
 import copy
+import gc
 import json
 import logging
 import math
@@ -805,6 +806,7 @@ def _cull_mesh_by_workspace(
 def _crop_mesh_to_workspace_bbox(
     mesh: o3d.geometry.TriangleMesh,
     workspace_voxels: o3d.geometry.VoxelGrid,
+    padding_m: float = 0.2,
 ) -> o3d.geometry.TriangleMesh:
     """Crop mesh to workspace voxel bounding box."""
     voxel_size = float(workspace_voxels.voxel_size)
@@ -814,8 +816,8 @@ def _crop_mesh_to_workspace_bbox(
         return mesh
 
     indices = np.array([v.grid_index for v in voxels], dtype=np.float32)
-    min_corner = origin + indices.min(axis=0) * voxel_size
-    max_corner = origin + (indices.max(axis=0) + 1.0) * voxel_size
+    min_corner = origin + indices.min(axis=0) * voxel_size - padding_m
+    max_corner = origin + (indices.max(axis=0) + 1.0) * voxel_size + padding_m
     aabb = o3d.geometry.AxisAlignedBoundingBox(min_corner, max_corner)
     return mesh.crop(aabb)
 
@@ -888,6 +890,7 @@ def initialize_scene(
     seg_ids = np.array(seg_data["segIndices"], dtype=np.int32)
     logger.info("Loaded %d superpoint assignments from %s", len(seg_ids), segs_json_path)
     dbg.save_superpoints(mesh, seg_ids)
+    del seg_data
 
     # ---- 5. Semantic-SAM 2D masks ----
     logger.info("Generating Semantic-SAM 2D masks …")
@@ -919,6 +922,11 @@ def initialize_scene(
     depths_np = np.stack(all_depths, axis=0)  # (M, H, W)
     poses_np = np.stack(all_poses, axis=0).astype(np.float32)  # (M, 4, 4)
     intrinsics_np = np.stack(all_intrinsics, axis=0).astype(np.float32)  # (M, 3, 3)
+    del all_masks, all_depths, all_poses, all_intrinsics
+    del mask_generator
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
     color_h, color_w = masks_np.shape[1], masks_np.shape[2]
     depth_h, depth_w = depths_np.shape[1], depths_np.shape[2]
@@ -928,6 +936,9 @@ def initialize_scene(
 
     # ---- 6. Run SAI3D ----
     logger.info("Running SAI3D progressive region growing …")
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
     pipeline = PipelineSAI3D(
         mesh_vertices=mesh_vertices,
         seg_ids=seg_ids,
@@ -951,7 +962,8 @@ def initialize_scene(
     # Convert vertex labels to per-frame pixel masks for table detection
     instance_groups = _render_instance_id_masks(mesh, vertex_labels, frames)
     if instance_groups is None:
-        instance_groups = _vertex_labels_to_pixel_masks_vectorized(mesh_vertices, vertex_labels, frames)
+        raise RuntimeError("instance grouping failed")
+        #instance_groups = _vertex_labels_to_pixel_masks_vectorized(mesh_vertices, vertex_labels, frames)
 
     # Determine valid object IDs (appear in at least 3 frames)
     all_label_ids = np.unique(vertex_labels)
