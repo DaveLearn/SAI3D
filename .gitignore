@@ -136,6 +136,7 @@ dmypy.json
 
 # checkpoint
 *.pth
-outputs/
+outputs
 test_data/
 Segmentator/segmentator
+.pixi
