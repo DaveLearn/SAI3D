@@ -645,6 +645,122 @@ def _vertex_labels_to_pixel_masks_vectorized(
     return result
 
 
+def _encode_ids_to_rgb(ids: np.ndarray) -> np.ndarray:
+    """Encode integer ids into RGB colors (0-255) without collision."""
+    ids = ids.astype(np.int64)
+    ids = np.clip(ids, 0, 0xFFFFFF)
+    r = (ids >> 16) & 0xFF
+    g = (ids >> 8) & 0xFF
+    b = ids & 0xFF
+    return np.stack([r, g, b], axis=-1).astype(np.uint8)
+
+
+def _triangle_labels_from_vertices(mesh: o3d.geometry.TriangleMesh, labels: np.ndarray) -> np.ndarray:
+    triangles = np.asarray(mesh.triangles)
+    tri_labels = labels[triangles]
+    a = tri_labels[:, 0]
+    b = tri_labels[:, 1]
+    c = tri_labels[:, 2]
+    return np.where((a == b) | (a == c), a, np.where(b == c, b, a))
+
+
+def _mesh_with_per_triangle_vertex_colors(
+    mesh: o3d.geometry.TriangleMesh,
+    tri_labels: np.ndarray,
+) -> o3d.geometry.TriangleMesh:
+    vertices = np.asarray(mesh.vertices)
+    triangles = np.asarray(mesh.triangles)
+    tri_vertices = vertices[triangles]
+    new_vertices = tri_vertices.reshape(-1, 3)
+    new_triangles = np.arange(new_vertices.shape[0]).reshape(-1, 3)
+
+    tri_colors = _encode_ids_to_rgb(tri_labels).astype(np.float32) / 255.0
+    new_colors = np.repeat(tri_colors, 3, axis=0)
+
+    new_mesh = o3d.geometry.TriangleMesh()
+    new_mesh.vertices = o3d.utility.Vector3dVector(new_vertices)
+    new_mesh.triangles = o3d.utility.Vector3iVector(new_triangles)
+    new_mesh.vertex_colors = o3d.utility.Vector3dVector(new_colors)
+    return new_mesh
+
+
+def _render_instance_id_masks(
+    mesh: o3d.geometry.TriangleMesh,
+    labels: np.ndarray,
+    frames: List[Frame],
+) -> Optional[Dict[str, np.ndarray]]:
+    """Render per-frame instance id masks with proper occlusion via raycasting."""
+
+    def _to_legacy_mesh(input_mesh):
+        if isinstance(input_mesh, o3d.geometry.TriangleMesh):
+            return input_mesh
+        if hasattr(input_mesh, "to_legacy"):
+            try:
+                return input_mesh.to_legacy()
+            except Exception:
+                pass
+        legacy = o3d.geometry.TriangleMesh()
+        legacy.vertices = o3d.utility.Vector3dVector(np.asarray(input_mesh.vertices))
+        legacy.triangles = o3d.utility.Vector3iVector(np.asarray(input_mesh.triangles))
+        return legacy
+
+    def _to_tensor_mesh(input_mesh: o3d.geometry.TriangleMesh) -> "o3d.t.geometry.TriangleMesh":
+        return o3d.t.geometry.TriangleMesh.from_legacy(input_mesh)
+
+    def _raycast_instance_id_masks(
+        mesh_legacy: o3d.geometry.TriangleMesh,
+        tri_labels: np.ndarray,
+        frames: List[Frame],
+    ) -> Dict[str, np.ndarray]:
+        scene = o3d.t.geometry.RaycastingScene()
+        tmesh = _to_tensor_mesh(mesh_legacy)
+        scene.add_triangles(tmesh)
+
+        result: Dict[str, np.ndarray] = {}
+        for frame in tqdm(frames, desc="Raycasting instance id masks"):
+            H, W = frame.h, frame.w
+            K = frame.K.cpu().numpy()
+            fx = float(K[0, 0])
+            fy = float(K[1, 1])
+            cx = float(K[0, 2])
+            cy = float(K[1, 2])
+
+            u, v = np.meshgrid(np.arange(W, dtype=np.float32), np.arange(H, dtype=np.float32))
+            u = u + 0.5
+            v = v + 0.5
+            dirs_cam = np.stack([(u - cx) / fx, (v - cy) / fy, np.ones_like(u)], axis=-1)
+            dirs_cam = dirs_cam.reshape(-1, 3)
+            dirs_cam /= np.linalg.norm(dirs_cam, axis=1, keepdims=True)
+
+            X_VW = frame.X_VW_opencv.cpu().numpy()
+            X_WV = np.linalg.inv(X_VW)
+            R = X_WV[:3, :3]
+            t = X_WV[:3, 3]
+            dirs_world = dirs_cam @ R.T
+            origins = np.broadcast_to(t, dirs_world.shape)
+
+            rays = np.concatenate([origins, dirs_world], axis=1).astype(np.float32)
+            ans = scene.cast_rays(o3d.core.Tensor(rays))
+            prim_ids = ans["primitive_ids"].numpy().reshape(H, W)
+
+            mask = np.zeros((H, W), dtype=np.int32)
+            if np.issubdtype(prim_ids.dtype, np.unsignedinteger):
+                invalid = np.iinfo(prim_ids.dtype).max
+                hit = prim_ids != invalid
+            else:
+                hit = prim_ids >= 0
+            if np.any(hit):
+                prim_ids_valid = prim_ids[hit].astype(np.int64)
+                mask[hit] = tri_labels[prim_ids_valid]
+            result[frame.name] = mask
+
+        return result
+
+    mesh_legacy = _to_legacy_mesh(copy.deepcopy(mesh))
+    tri_labels = _triangle_labels_from_vertices(mesh_legacy, labels)
+    return _raycast_instance_id_masks(mesh_legacy, tri_labels, frames)
+
+
 # ---------------------------------------------------------------------------
 # Workspace filtering of vertex labels
 # ---------------------------------------------------------------------------
@@ -833,7 +949,9 @@ def initialize_scene(
     vertex_labels = _filter_labels_by_workspace(mesh_vertices, vertex_labels, workspace_voxels)
 
     # Convert vertex labels to per-frame pixel masks for table detection
-    instance_groups = _vertex_labels_to_pixel_masks_vectorized(mesh_vertices, vertex_labels, frames)
+    instance_groups = _render_instance_id_masks(mesh, vertex_labels, frames)
+    if instance_groups is None:
+        instance_groups = _vertex_labels_to_pixel_masks_vectorized(mesh_vertices, vertex_labels, frames)
 
     # Determine valid object IDs (appear in at least 3 frames)
     all_label_ids = np.unique(vertex_labels)
