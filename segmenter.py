@@ -25,6 +25,7 @@ from plyfile import PlyData, PlyElement
 # Prevent Open3D from loading its ML sub-module, which pulls in sklearn and
 # triggers a numpy binary-incompatibility error in some environments.
 import sys as _sys, types as _types
+
 _sys.modules.setdefault("open3d.ml", _types.ModuleType("open3d.ml"))
 
 os.environ.setdefault("SSL_CERT_FILE", certifi.where())
@@ -124,7 +125,9 @@ def _post_process_mesh(mesh: o3d.geometry.TriangleMesh, cluster_to_keep: int = 1
 
 
 @torch.no_grad()
-def _extract_mesh_bounded(frames: List[Frame], voxel_size: float = 0.004, sdf_trunc: float = 0.02, depth_trunc: float = 3) -> o3d.geometry.TriangleMesh:
+def _extract_mesh_bounded(
+    frames: List[Frame], voxel_size: float = 0.004, sdf_trunc: float = 0.02, depth_trunc: float = 3
+) -> o3d.geometry.TriangleMesh:
     """TSDF integration and marching-cubes extraction."""
     logger.info("TSDF integration: voxel_size=%.4f  sdf_trunc=%.4f  depth_trunc=%.2f", voxel_size, sdf_trunc, depth_trunc)
     for frame in frames:
@@ -416,9 +419,7 @@ def _ensure_segmentator_ply(ply_path: Path) -> Path:
     face_el = np.empty(faces.shape[0], dtype=[("vertex_indices", "u4", (3,))])
     face_el["vertex_indices"] = faces
 
-    PlyData([PlyElement.describe(verts_el, "vertex"), PlyElement.describe(face_el, "face")], text=False).write(
-        str(fixed_path)
-    )
+    PlyData([PlyElement.describe(verts_el, "vertex"), PlyElement.describe(face_el, "face")], text=False).write(str(fixed_path))
     logger.info("Wrote Segmentator-friendly PLY to %s", fixed_path)
     return fixed_path
 
@@ -435,7 +436,7 @@ def _make_args_namespace() -> types.SimpleNamespace:
         similar_metric=SIMILAR_METRIC,
         view_freq=VIEW_FREQ,
         dis_decay=DIS_DECAY,
-        use_torch=False,
+        use_torch=True,
         thres_trunc=THRES_TRUNC,
         thres_merge=THRES_MERGE,
         from_points_thres=FROM_POINTS_THRES,
@@ -672,6 +673,19 @@ def _filter_labels_by_workspace(
     return labels
 
 
+def _cull_mesh_by_workspace(
+    mesh: o3d.geometry.TriangleMesh,
+    workspace_voxels: o3d.geometry.VoxelGrid,
+) -> o3d.geometry.TriangleMesh:
+    """Cull mesh vertices/triangles to workspace voxels only."""
+    mesh = copy.deepcopy(mesh)
+    vertices = np.asarray(mesh.vertices)
+    valid_mask = np.array(workspace_voxels.check_if_included(o3d.utility.Vector3dVector(vertices)))
+    if not valid_mask.all():
+        mesh.remove_vertices_by_mask(~valid_mask)
+    return mesh
+
+
 # ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
@@ -715,7 +729,17 @@ def initialize_scene(
     logger.info("Mesh has %d vertices, %d triangles", len(mesh.vertices), len(mesh.triangles))
     dbg.save_mesh(mesh)
 
-    # ---- 3. Export PLY + run Segmentator ----
+    # ---- 3. Workspace voxel grid ----
+    workspace_voxels = get_workspace_voxels(scene)
+    dbg.save_workspace_voxels(workspace_voxels)
+
+    # Cull mesh to workspace before exporting to Segmentator
+    mesh = _cull_mesh_by_workspace(mesh, workspace_voxels)
+    mesh_vertices = np.asarray(mesh.vertices).astype(np.float32)
+    logger.info("Culled mesh has %d vertices, %d triangles", len(mesh.vertices), len(mesh.triangles))
+    dbg.save_mesh(mesh)
+
+    # ---- 4. Export PLY + run Segmentator ----
     work_dir = intermediate_outputs_path if intermediate_outputs_path is not None else Path("/tmp/sai3d_work")
     work_dir.mkdir(parents=True, exist_ok=True)
     ply_path = work_dir / "mesh.ply"
@@ -729,7 +753,7 @@ def initialize_scene(
     logger.info("Loaded %d superpoint assignments from %s", len(seg_ids), segs_json_path)
     dbg.save_superpoints(mesh, seg_ids)
 
-    # ---- 4. Semantic-SAM 2D masks ----
+    # ---- 5. Semantic-SAM 2D masks ----
     logger.info("Generating Semantic-SAM 2D masks …")
     mask_generator = _build_mask_generator()
     mask_cache_dir = work_dir / "semantic_sam_masks" if intermediate_outputs_path is not None else None
@@ -765,10 +789,6 @@ def initialize_scene(
 
     logger.info("Masks shape: %s, Depths shape: %s", masks_np.shape, depths_np.shape)
     dbg.save_masks_2d(frames, masks_np)
-
-    # ---- 5. Workspace voxel grid ----
-    workspace_voxels = get_workspace_voxels(scene)
-    dbg.save_workspace_voxels(workspace_voxels)
 
     # ---- 6. Run SAI3D ----
     logger.info("Running SAI3D progressive region growing …")
