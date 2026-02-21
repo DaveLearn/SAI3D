@@ -686,6 +686,26 @@ def _cull_mesh_by_workspace(
     return mesh
 
 
+def _crop_mesh_to_workspace_bbox(
+    mesh: o3d.geometry.TriangleMesh,
+    workspace_voxels: o3d.geometry.VoxelGrid,
+) -> o3d.geometry.TriangleMesh:
+    """Crop mesh to workspace voxel bounding box."""
+    voxel_size = float(workspace_voxels.voxel_size)
+    origin = np.asarray(workspace_voxels.origin, dtype=np.float32)
+    voxels = workspace_voxels.get_voxels()
+    if len(voxels) == 0:
+        return mesh
+
+    indices = np.array([v.grid_index for v in voxels], dtype=np.float32)
+    min_corner = origin + indices.min(axis=0) * voxel_size
+    max_corner = origin + (indices.max(axis=0) + 1.0) * voxel_size
+    aabb = o3d.geometry.AxisAlignedBoundingBox(min_corner, max_corner)
+    return mesh.crop(aabb)
+
+
+
+
 # ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
@@ -733,10 +753,10 @@ def initialize_scene(
     workspace_voxels = get_workspace_voxels(scene)
     dbg.save_workspace_voxels(workspace_voxels)
 
-    # Cull mesh to workspace before exporting to Segmentator
-    mesh = _cull_mesh_by_workspace(mesh, workspace_voxels)
+    # Crop mesh to workspace bounding box before Segmentator
+    mesh = _crop_mesh_to_workspace_bbox(mesh, workspace_voxels)
     mesh_vertices = np.asarray(mesh.vertices).astype(np.float32)
-    logger.info("Culled mesh has %d vertices, %d triangles", len(mesh.vertices), len(mesh.triangles))
+    logger.info("Cropped mesh has %d vertices, %d triangles", len(mesh.vertices), len(mesh.triangles))
     dbg.save_mesh(mesh)
 
     # ---- 4. Export PLY + run Segmentator ----

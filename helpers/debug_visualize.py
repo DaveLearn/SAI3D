@@ -28,20 +28,25 @@ def is_debug_enabled() -> bool:
 
 
 def _random_colors_for_labels(labels: np.ndarray, seed: int = 42) -> np.ndarray:
-    """Assign a deterministic random RGB color to each unique label.
+    """Assign a deterministic RGB color to each label id.
 
     Label 0 is treated as background and gets light gray.
     Returns (N, 3) float64 array in [0, 1].
     """
-    rng = np.random.RandomState(seed)
-    unique = np.unique(labels)
-    color_map = {}
-    for u in unique:
-        if u <= 0:
-            color_map[u] = np.array([0.9, 0.9, 0.9])
-        else:
-            color_map[u] = rng.rand(3)
-    colors = np.array([color_map[int(l)] for l in labels])
+    labels_int = labels.astype(np.int64)
+    colors = np.empty((labels_int.shape[0], 3), dtype=np.float64)
+
+    bg_mask = labels_int <= 0
+    colors[bg_mask] = np.array([0.9, 0.9, 0.9])
+
+    fg = labels_int[~bg_mask]
+    if fg.size:
+        hashed = (fg * 2654435761 + seed) & 0xFFFFFFFF
+        r = ((hashed >> 16) & 0xFF) / 255.0
+        g = ((hashed >> 8) & 0xFF) / 255.0
+        b = (hashed & 0xFF) / 255.0
+        colors[~bg_mask] = np.stack([r, g, b], axis=-1)
+
     return colors
 
 
@@ -286,7 +291,7 @@ class DebugVisualizer:
             if mask is None:
                 continue
 
-            colors = _random_colors_for_labels(mask.ravel(), seed=77).reshape(mask.shape + (3,))
+            colors = _random_colors_for_labels(mask.ravel(), seed=42).reshape(mask.shape + (3,))
             colors_uint8 = (colors * 255).astype(np.uint8)
 
             rgb = frame.color.cpu().numpy()
