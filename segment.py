@@ -8,8 +8,10 @@ Outputs ``objects_path: <path>`` to stdout for the parent process to read.
 
 from dataclasses import dataclass
 from pathlib import Path
-import time
+import contextlib
 import logging
+import sys
+import time
 import tyro
 
 from initializerdefs import Observations, SceneSetup
@@ -34,33 +36,35 @@ def run() -> None:
 
     args = tyro.cli(Args)
 
-    logger.info("--------------")
-    logger.info("Starting SAI3D initialization")
-    logger.info("params: %s", args)
+    with contextlib.redirect_stdout(sys.stderr):
+        logger.info("--------------")
+        logger.info("Starting SAI3D initialization")
+        logger.info("params: %s", args)
 
-    logger.info("Loading observations from %s …", args.observations_path)
-    dataset: Observations = Observations.load(args.observations_path)
-    logger.info("Observations loaded.")
+        logger.info("Loading observations from %s …", args.observations_path)
+        dataset: Observations = Observations.load(args.observations_path)
+        logger.info("Observations loaded.")
 
-    logger.info("Loading scene setup from %s …", args.scene_path)
-    scene = SceneSetup.load(args.scene_path)
-    logger.info("Scene loaded.")
+        logger.info("Loading scene setup from %s …", args.scene_path)
+        scene = SceneSetup.load(args.scene_path)
+        logger.info("Scene loaded.")
 
-    if dataset.id is None:
-        logger.info("Dataset has no id, using transient id")
-        dataset.id = f"transient_{time.strftime('%Y%m%d-%H%M%S')}"
+        if dataset.id is None:
+            logger.info("Dataset has no id, using transient id")
+            dataset.id = f"transient_{time.strftime('%Y%m%d-%H%M%S')}"
 
-    project_root = Path(__file__).parent
-    output_dir = project_root / "outputs" / f"{time.strftime('%Y%m%d-%H%M%S')}_{dataset.id}"
+        project_root = Path(__file__).parent
+        output_dir = project_root / "outputs" / f"{time.strftime('%Y%m%d-%H%M%S')}_{dataset.id}"
 
-    logger.info("Initializing scene …")
-    objects = initialize_scene(dataset, scene, intermediate_outputs_path=output_dir)
+        logger.info("Initializing scene …")
+        objects = initialize_scene(dataset, scene, intermediate_outputs_path=output_dir)
 
-    output_path = output_dir / "objectsdef.pkl"
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    objects.save(output_path)
+        output_path = output_dir / "objectsdef.pkl"
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        objects.save(output_path)
 
-    logger.info("Objects saved to %s", output_path)
+        logger.info("Objects saved to %s", output_path)
+
     # Output in format expected by ExternalSegmentationInitializer
     print(f"objects_path: {output_path}")
 
