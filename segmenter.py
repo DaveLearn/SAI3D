@@ -166,7 +166,29 @@ def _extract_mesh_bounded_with_res(frames: List[Frame], depth_trunc: float = 2, 
 # ---------------------------------------------------------------------------
 
 
-def get_workspace_voxels(scene: SceneSetup) -> o3d.geometry.VoxelGrid:
+def _erode_voxel_grid_xy(voxel_grid: o3d.geometry.VoxelGrid, layers: int) -> o3d.geometry.VoxelGrid:
+    if layers <= 0 or not voxel_grid.has_voxels():
+        return voxel_grid
+
+    voxel_indices = [tuple(int(idx) for idx in voxel.grid_index) for voxel in voxel_grid.get_voxels()]
+    xy_occupied = {(x, y) for x, y, _ in voxel_indices}
+
+    for _ in range(layers):
+        if not xy_occupied:
+            break
+        prev_xy = xy_occupied
+        xy_occupied = {
+            (x, y) for (x, y) in prev_xy if ((x - 1, y) in prev_xy and (x + 1, y) in prev_xy and (x, y - 1) in prev_xy and (x, y + 1) in prev_xy)
+        }
+
+    for voxel_index in voxel_indices:
+        if (voxel_index[0], voxel_index[1]) not in xy_occupied:
+            voxel_grid.remove_voxel(voxel_index)
+
+    return voxel_grid
+
+
+def get_workspace_voxels(scene: SceneSetup, shrink_xy_m: float = 0.1) -> o3d.geometry.VoxelGrid:
     table_xyz = scene.ground_gaussians.xyz
     table_plane = scene.ground_plane
     table_normal = np.array([table_plane[0], table_plane[1], table_plane[2]])
@@ -182,7 +204,10 @@ def get_workspace_voxels(scene: SceneSetup) -> o3d.geometry.VoxelGrid:
         table_pcd_extruded = np.append(table_pcd_extruded, table_xyz - table_normal * VOXEL_SIZE * (i + 1), axis=0)
 
     pcd = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(table_pcd_extruded))
-    return o3d.geometry.VoxelGrid.create_from_point_cloud(pcd, VOXEL_SIZE * 2)
+    voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud(pcd, VOXEL_SIZE * 2)
+
+    layers = max(0, int(np.round(shrink_xy_m / voxel_grid.voxel_size)))
+    return _erode_voxel_grid_xy(voxel_grid, layers)
 
 
 # ---------------------------------------------------------------------------
@@ -822,8 +847,6 @@ def _crop_mesh_to_workspace_bbox(
     return mesh.crop(aabb)
 
 
-
-
 # ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
@@ -963,7 +986,7 @@ def initialize_scene(
     instance_groups = _render_instance_id_masks(mesh, vertex_labels, frames)
     if instance_groups is None:
         raise RuntimeError("instance grouping failed")
-        #instance_groups = _vertex_labels_to_pixel_masks_vectorized(mesh_vertices, vertex_labels, frames)
+        # instance_groups = _vertex_labels_to_pixel_masks_vectorized(mesh_vertices, vertex_labels, frames)
 
     # Determine valid object IDs (appear in at least 3 frames)
     all_label_ids = np.unique(vertex_labels)
