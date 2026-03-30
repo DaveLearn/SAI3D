@@ -83,3 +83,8 @@ build_deps = "bash scripts/build_deps.sh"
 
 [tool.pixi.pypi-options]
 no-build-isolation = ["detectron2"]
+
+
+[tool.pixi.activation.env]
+CPATH = "${PIXI_PROJECT_ROOT}/.pixi/envs/default/include:${PIXI_PROJECT_ROOT}/.pixi/envs/default/targets/x86_64-linux/include"
+CUDA_HOME = "${PIXI_PROJECT_ROOT}/.pixi/envs/default"
