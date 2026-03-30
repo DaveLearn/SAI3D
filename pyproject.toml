@@ -36,7 +36,6 @@ dependencies = [
     "kornia==0.7.0",
     "cython==3.0.2",
     "ninja==1.10.2.3",
-    "setuptools==68.2.2",
    
     "panopticapi @ git+https://github.com/cocodataset/panopticapi.git",
     # External segmenter CLI
@@ -70,6 +69,9 @@ gcc = "13.*"
 gxx = "13.*"
 ca-certificates = ">=2026.1.4,<2027"
 certifi = ">=2026.1.4,<2027"
+setuptools = "<70"
+wheel = "*"
+
 
 [tool.pixi.tasks]
 segment = "python sai3d.py"
@@ -83,7 +85,6 @@ build_deps = "bash scripts/build_deps.sh"
 
 [tool.pixi.pypi-options]
 no-build-isolation = ["detectron2"]
-
 
 [tool.pixi.activation.env]
 CPATH = "${PIXI_PROJECT_ROOT}/.pixi/envs/default/include:${PIXI_PROJECT_ROOT}/.pixi/envs/default/targets/x86_64-linux/include"
