@@ -815,16 +815,30 @@ def _filter_labels_by_workspace(
     return labels
 
 
-def _cull_mesh_by_workspace(
+def _crop_mesh_to_workspace(
     mesh: o3d.geometry.TriangleMesh,
     workspace_voxels: o3d.geometry.VoxelGrid,
 ) -> o3d.geometry.TriangleMesh:
-    """Cull mesh vertices/triangles to workspace voxels only."""
-    mesh = copy.deepcopy(mesh)
+    """Keep only triangles whose three vertices are inside workspace voxels."""
+    if not mesh.has_triangles() or not mesh.has_vertices() or not workspace_voxels.has_voxels():
+        return mesh
+
     vertices = np.asarray(mesh.vertices)
-    valid_mask = np.array(workspace_voxels.check_if_included(o3d.utility.Vector3dVector(vertices)))
-    if not valid_mask.all():
-        mesh.remove_vertices_by_mask(~valid_mask)
+    triangles = np.asarray(mesh.triangles)
+    if len(vertices) == 0 or len(triangles) == 0:
+        return mesh
+
+    in_workspace = np.asarray(
+        workspace_voxels.check_if_included(o3d.utility.Vector3dVector(vertices)),
+        dtype=bool,
+    )
+    keep_triangles = in_workspace[triangles].all(axis=1)
+
+    if keep_triangles.all():
+        return mesh
+
+    mesh.remove_triangles_by_mask(~keep_triangles)
+    mesh.remove_unreferenced_vertices()
     return mesh
 
 
@@ -894,10 +908,12 @@ def initialize_scene(
     workspace_voxels = get_workspace_voxels(scene)
     dbg.save_workspace_voxels(workspace_voxels)
 
-    # Crop mesh to workspace bounding box before Segmentator
+    # Crop mesh to workspace bounding box before voxel-accurate workspace crop
     mesh = _crop_mesh_to_workspace_bbox(mesh, workspace_voxels)
+    logger.info("BBox-cropped mesh has %d vertices, %d triangles", len(mesh.vertices), len(mesh.triangles))
+    mesh = _crop_mesh_to_workspace(mesh, workspace_voxels)
     mesh_vertices = np.asarray(mesh.vertices).astype(np.float32)
-    logger.info("Cropped mesh has %d vertices, %d triangles", len(mesh.vertices), len(mesh.triangles))
+    logger.info("Workspace-cropped mesh has %d vertices, %d triangles", len(mesh.vertices), len(mesh.triangles))
     dbg.save_mesh(mesh)
 
     # ---- 4. Export PLY + run Segmentator ----
