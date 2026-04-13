@@ -10,12 +10,18 @@ from dataclasses import dataclass
 from pathlib import Path
 import contextlib
 import logging
+import random
 import sys
 import time
+import numpy as np
+import torch
 import tyro
 
 from initializerdefs import Observations, SceneSetup
 from segmenter import initialize_scene
+
+
+DEFAULT_SEED = 0
 
 
 @dataclass
@@ -36,10 +42,19 @@ def run() -> None:
 
     args = tyro.cli(Args)
 
+    random.seed(DEFAULT_SEED)
+    np.random.seed(DEFAULT_SEED)
+    torch.manual_seed(DEFAULT_SEED)
+    torch.cuda.manual_seed_all(DEFAULT_SEED)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    torch.use_deterministic_algorithms(True, warn_only=True)
+
     with contextlib.redirect_stdout(sys.stderr):
         logger.info("--------------")
         logger.info("Starting SAI3D initialization")
         logger.info("params: %s", args)
+        logger.info("Determinism enabled with seed=%d", DEFAULT_SEED)
 
         logger.info("Loading observations from %s …", args.observations_path)
         dataset: Observations = Observations.load(args.observations_path)
