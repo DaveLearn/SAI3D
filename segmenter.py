@@ -189,26 +189,49 @@ def _erode_voxel_grid_xy(voxel_grid: o3d.geometry.VoxelGrid, layers: int) -> o3d
     return voxel_grid
 
 
-def get_workspace_voxels(scene: SceneSetup, shrink_xy_m: float = 0.1) -> o3d.geometry.VoxelGrid:
+def _maybe_visualize_workspace_voxels(table_pcd: o3d.geometry.PointCloud, workspace_voxels: o3d.geometry.VoxelGrid) -> None:
+    if os.environ.get("SAI3D_DEBUG_WORKSPACE_O3D", "0") != "1":
+        return
+
+    table_vis = copy.deepcopy(table_pcd)
+    table_vis.paint_uniform_color([0.8, 0.8, 0.8])
+
+    try:
+        o3d.visualization.draw_geometries(
+            [table_vis, workspace_voxels],
+            window_name="SAI3D Workspace Voxels Debug",
+            width=1280,
+            height=800,
+        )
+    except Exception:
+        logger.exception("Failed to render workspace voxel debug view")
+
+
+def get_workspace_voxels(scene: SceneSetup, shrink_xy_m: float = 0.04) -> o3d.geometry.VoxelGrid:
     table_xyz = scene.ground_gaussians.xyz
     table_plane = scene.ground_plane
     table_normal = np.array([table_plane[0], table_plane[1], table_plane[2]])
     table_pcd_extruded = np.array(table_xyz).copy()
 
     DESIRED_HEIGHT = 1.0
-    VOXEL_SIZE = 0.05
-    iters = int(DESIRED_HEIGHT / VOXEL_SIZE)
+    BELOW_TABLE_HEIGHT = 0.10
+    VOXEL_SIZE = 0.02
+    iters = int(np.ceil(DESIRED_HEIGHT / VOXEL_SIZE))
     for i in range(iters):
         new_points = table_xyz + table_normal * VOXEL_SIZE * i
         table_pcd_extruded = np.append(table_pcd_extruded, new_points, axis=0)
-    for i in range(5):
+
+    below_table_iters = int(np.ceil(BELOW_TABLE_HEIGHT / VOXEL_SIZE))
+    for i in range(below_table_iters):
         table_pcd_extruded = np.append(table_pcd_extruded, table_xyz - table_normal * VOXEL_SIZE * (i + 1), axis=0)
 
     pcd = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(table_pcd_extruded))
-    voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud(pcd, VOXEL_SIZE * 2)
+    voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud(pcd, VOXEL_SIZE)
 
     layers = max(0, int(np.round(shrink_xy_m / voxel_grid.voxel_size)))
-    return _erode_voxel_grid_xy(voxel_grid, layers)
+    voxel_grid = _erode_voxel_grid_xy(voxel_grid, layers)
+    _maybe_visualize_workspace_voxels(pcd, voxel_grid)
+    return voxel_grid
 
 
 # ---------------------------------------------------------------------------
@@ -1082,7 +1105,7 @@ def initialize_scene(
     vertex_ids_before_workspace_filter = vertex_ids_before_workspace_filter[vertex_ids_before_workspace_filter > 0]
     labeled_vertices_before_workspace_filter = int(np.count_nonzero(vertex_labels_raw > 0))
 
-    vertex_labels = _filter_labels_by_workspace(mesh_vertices, vertex_labels, workspace_voxels)
+    # vertex_labels = _filter_labels_by_workspace(mesh_vertices, vertex_labels, workspace_voxels)
 
     vertex_ids_after_workspace_filter = np.unique(vertex_labels)
     vertex_ids_after_workspace_filter = vertex_ids_after_workspace_filter[vertex_ids_after_workspace_filter > 0]
