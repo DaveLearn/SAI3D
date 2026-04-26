@@ -32,6 +32,9 @@ class Args:
     scene_path: tyro.conf.Positional[Path]
     """Path to the pickled SceneSetup."""
 
+    with_workspace_mask_filter: bool = False
+    """Enable per-frame 2D workspace-overlap mask filtering before SAI3D."""
+
 
 def run() -> None:
     logger = logging.getLogger("sai3d-segmenter")
@@ -55,6 +58,7 @@ def run() -> None:
         logger.info("Starting SAI3D initialization")
         logger.info("params: %s", args)
         logger.info("Determinism enabled with seed=%d", DEFAULT_SEED)
+        logger.info("2D workspace mask filter enabled: %s", args.with_workspace_mask_filter)
 
         logger.info("Loading observations from %s …", args.observations_path)
         dataset: Observations = Observations.load(args.observations_path)
@@ -72,7 +76,12 @@ def run() -> None:
         output_dir = project_root / "outputs" / f"{time.strftime('%Y%m%d-%H%M%S')}_{dataset.id}"
 
         logger.info("Initializing scene …")
-        objects = initialize_scene(dataset, scene, intermediate_outputs_path=output_dir)
+        objects = initialize_scene(
+            dataset,
+            scene,
+            intermediate_outputs_path=output_dir,
+            with_workspace_mask_filter=args.with_workspace_mask_filter,
+        )
 
         output_path = output_dir / "objectsdef.pkl"
         output_path.parent.mkdir(parents=True, exist_ok=True)

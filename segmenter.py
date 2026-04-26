@@ -72,6 +72,7 @@ THRES_TRUNC = 0.0
 FROM_POINTS_THRES = 0
 K_THRESH = 0.01
 SEG_MIN_VERTS = 20
+MASK_WORKSPACE_MIN_OVERLAP = 0.5
 
 # ---------------------------------------------------------------------------
 # helpers – ObservationFrame → Frame
@@ -815,6 +816,58 @@ def _filter_labels_by_workspace(
     return labels
 
 
+def _filter_frame_masks_by_workspace_overlap(
+    frame: Frame,
+    mask_2d: np.ndarray,
+    workspace_voxels: o3d.geometry.VoxelGrid,
+    min_workspace_overlap: float = MASK_WORKSPACE_MIN_OVERLAP,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Drop per-frame mask ids that have low overlap with workspace voxels."""
+    if not workspace_voxels.has_voxels():
+        return mask_2d, np.array([], dtype=np.int32)
+
+    assert frame.depth is not None
+    depth = frame.depth.cpu().numpy()
+    valid_depth = depth > 0
+    if not np.any(valid_depth):
+        return mask_2d, np.array([], dtype=np.int32)
+
+    y, x = np.nonzero(valid_depth)
+    z = depth[valid_depth]
+
+    x_cam = (x.astype(np.float32) - float(frame.cx)) * z / float(frame.fl_x)
+    y_cam = (y.astype(np.float32) - float(frame.cy)) * z / float(frame.fl_y)
+
+    points_cam_h = np.stack([x_cam, y_cam, z, np.ones_like(z)], axis=1)
+    x_wv = frame.X_WV_opencv.cpu().numpy()
+    points_world = (x_wv @ points_cam_h.T).T[:, :3]
+
+    points_in_workspace = np.asarray(
+        workspace_voxels.check_if_included(o3d.utility.Vector3dVector(points_world)),
+        dtype=bool,
+    )
+
+    labels_valid_depth = mask_2d[valid_depth]
+    removed_ids: List[int] = []
+    unique_labels, label_counts = np.unique(labels_valid_depth, return_counts=True)
+
+    for lbl, total_valid_depth in zip(unique_labels, label_counts):
+        if lbl <= 0:
+            continue
+
+        label_mask = labels_valid_depth == lbl
+        in_workspace = np.count_nonzero(points_in_workspace & label_mask)
+        if total_valid_depth > 0 and in_workspace / total_valid_depth <= min_workspace_overlap:
+            removed_ids.append(int(lbl))
+
+    if not removed_ids:
+        return mask_2d, np.array([], dtype=np.int32)
+
+    filtered_mask = mask_2d.copy()
+    filtered_mask[np.isin(filtered_mask, removed_ids)] = 0
+    return filtered_mask, np.asarray(removed_ids, dtype=np.int32)
+
+
 def _crop_mesh_to_workspace(
     mesh: o3d.geometry.TriangleMesh,
     workspace_voxels: o3d.geometry.VoxelGrid,
@@ -870,6 +923,7 @@ def initialize_scene(
     observations: Observations,
     scene: SceneSetup,
     intermediate_outputs_path: Optional[Path] = None,
+    with_workspace_mask_filter: bool = False,
 ) -> ObjectSegmentations:
     """Run the full SAI3D pipeline on the given observations.
 
@@ -940,9 +994,29 @@ def initialize_scene(
     all_depths = []
     all_poses = []
     all_intrinsics = []
+    total_mask_ids_before_workspace_filter = 0
+    total_mask_ids_removed_by_workspace_filter = 0
 
     for frame in tqdm(frames, desc="Semantic-SAM mask generation"):
         mask_2d = _generate_masks_for_frame(frame, mask_generator, cache_dir=mask_cache_dir)
+
+        if with_workspace_mask_filter:
+            mask_ids_before_filter = np.unique(mask_2d)
+            mask_ids_before_filter = mask_ids_before_filter[mask_ids_before_filter > 0]
+            total_mask_ids_before_workspace_filter += len(mask_ids_before_filter)
+
+            mask_2d, removed_mask_ids = _filter_frame_masks_by_workspace_overlap(frame, mask_2d, workspace_voxels)
+            total_mask_ids_removed_by_workspace_filter += len(removed_mask_ids)
+
+            if len(removed_mask_ids) > 0:
+                logger.info(
+                    "Frame %s: removed %d/%d mask ids by workspace overlap <= %.2f",
+                    frame.name,
+                    len(removed_mask_ids),
+                    len(mask_ids_before_filter),
+                    MASK_WORKSPACE_MIN_OVERLAP,
+                )
+
         all_masks.append(mask_2d)
 
         assert frame.depth is not None
@@ -971,6 +1045,14 @@ def initialize_scene(
     depth_h, depth_w = depths_np.shape[1], depths_np.shape[2]
 
     logger.info("Masks shape: %s, Depths shape: %s", masks_np.shape, depths_np.shape)
+    if with_workspace_mask_filter:
+        logger.info(
+            "2D workspace overlap filter removed %d/%d mask ids",
+            total_mask_ids_removed_by_workspace_filter,
+            total_mask_ids_before_workspace_filter,
+        )
+    else:
+        logger.info("2D workspace overlap filter disabled")
     dbg.save_masks_2d(frames, masks_np)
 
     # ---- 6. Run SAI3D ----
@@ -996,7 +1078,23 @@ def initialize_scene(
 
     # ---- 7. Filter by workspace + remove table ----
     vertex_labels_raw = vertex_labels.copy()  # save pre-filter copy for debug comparison
+    vertex_ids_before_workspace_filter = np.unique(vertex_labels_raw)
+    vertex_ids_before_workspace_filter = vertex_ids_before_workspace_filter[vertex_ids_before_workspace_filter > 0]
+    labeled_vertices_before_workspace_filter = int(np.count_nonzero(vertex_labels_raw > 0))
+
     vertex_labels = _filter_labels_by_workspace(mesh_vertices, vertex_labels, workspace_voxels)
+
+    vertex_ids_after_workspace_filter = np.unique(vertex_labels)
+    vertex_ids_after_workspace_filter = vertex_ids_after_workspace_filter[vertex_ids_after_workspace_filter > 0]
+    removed_vertex_ids = np.setdiff1d(vertex_ids_before_workspace_filter, vertex_ids_after_workspace_filter)
+    removed_labeled_vertices = int(np.count_nonzero((vertex_labels_raw > 0) & (vertex_labels == 0)))
+    logger.info(
+        "Vertex workspace filter removed %d/%d labels and %d/%d labeled vertices",
+        len(removed_vertex_ids),
+        len(vertex_ids_before_workspace_filter),
+        removed_labeled_vertices,
+        labeled_vertices_before_workspace_filter,
+    )
 
     # Convert vertex labels to per-frame pixel masks for table detection
     instance_groups = _render_instance_id_masks(mesh, vertex_labels, frames)
