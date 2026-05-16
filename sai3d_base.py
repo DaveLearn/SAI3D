@@ -405,7 +405,11 @@ class SAI3DBase:
         :param confidence_mat: (s, s, m)
         :return: adj: (s, s)      
         """
-        assert similar_mat.nonzero()[0].size > 0
+        similar_nnz = int(np.count_nonzero(similar_mat))
+        confidence_nnz = int(np.count_nonzero(confidence_mat))
+        if similar_nnz == 0 and confidence_nnz == 0:
+            logger.warning("No similarity evidence; returning zero adjacency (similar_nnz=0 confidence_nnz=0).")
+            return np.zeros([self.seg_num, self.seg_num])
         adj = np.zeros([self.seg_num, self.seg_num])
 
         adj[confidence_mat.nonzero()] = similar_mat[confidence_mat.nonzero()] / confidence_mat[confidence_mat.nonzero()]
