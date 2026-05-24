@@ -327,6 +327,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/2e/54/647ade08bf0db230bfea292f893923872fd20be6ac6f53b2b936ba839d75/zipp-3.23.0-py3-none-any.whl
       - pypi: ../../packages/initializerdefs
       - pypi: ../../packages/psdframe
+      - pypi: ../../packages/psdstaticdataset
       - pypi: ./
       - pypi: ./Semantic-SAM
 packages:
@@ -3668,6 +3669,16 @@ packages:
   - numpy>=1.26.4,<2.0.0
   - torch>=2.0,<3.0
   requires_python: '>=3.10,<4.0'
+- pypi: ../../packages/psdstaticdataset
+  name: psdstaticdataset
+  version: 0.1.0
+  sha256: 2be54d775bb29f33a9f03554de50a116c2bd6134a713bdffb864457619131f6a
+  requires_dist:
+  - pillow>=9.0,<10.0
+  - numpy>=1.26.4,<2.0.0
+  - psdframe @ git+ssh://git@github.com/davelearn/embodied_gaussians.git@feat/init-strategy#subdirectory=packages/psdframe ; extra == 'standalone'
+  - torch>=2.0,<3.0
+  requires_python: '>=3.10,<4.0'
 - pypi: https://files.pythonhosted.org/packages/b5/70/5d8df3b09e25bce090399cf48e452d25c935ab72dad19406c77f4e828045/psutil-7.2.2-cp36-abi3-manylinux2010_x86_64.manylinux_2_12_x86_64.manylinux_2_28_x86_64.whl
   name: psutil
   version: 7.2.2
@@ -3957,7 +3968,7 @@ packages:
 - pypi: ./
   name: sai3d
   version: 0.1.0
-  sha256: a46f41c3e9e358d5bf750004215b90562c5d599644f0d1370167cb6509f4b5cf
+  sha256: 14ef12ddcfeb014288084b657cea125d5f23ff5b30de32f70b9344715d70ac62
   requires_dist:
   - numpy>=1.23.1
   - scipy>=1.14.1

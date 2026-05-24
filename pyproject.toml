@@ -59,6 +59,7 @@ semantic-sam = { path = "./Semantic-SAM", editable = true }
 detectron2 = { git="https://github.com/MaureenZOU/detectron2-xyz.git" }
 psdframe = { path = "../../packages/psdframe", editable = true }
 initializerdefs = { path = "../../packages/initializerdefs", editable = true }
+psdstaticdataset = { path = "../../packages/psdstaticdataset", editable = true }
 
 [tool.pixi.dependencies]
 cuda-version = "12.6.*"
