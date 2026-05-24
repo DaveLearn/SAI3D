@@ -14,8 +14,6 @@ import logging
 import math
 import os
 import subprocess
-import sys
-import types
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -25,28 +23,29 @@ from plyfile import PlyData, PlyElement
 
 # Prevent Open3D from loading its ML sub-module, which pulls in sklearn and
 # triggers a numpy binary-incompatibility error in some environments.
-import sys as _sys, types as _types
+import sys as _sys
+import types as _types
 
 _sys.modules.setdefault("open3d.ml", _types.ModuleType("open3d.ml"))
 
 os.environ.setdefault("SSL_CERT_FILE", certifi.where())
 os.environ.setdefault("REQUESTS_CA_BUNDLE", certifi.where())
 
-import open3d as o3d
-import torch
-from scipy.spatial.transform import Rotation as R
-from tqdm import tqdm
+import open3d as o3d  # noqa: E402
+import torch  # noqa: E402
+from scipy.spatial.transform import Rotation as R  # noqa: E402
+from tqdm import tqdm  # noqa: E402
 
-from initializerdefs import (
+from initializerdefs import (  # noqa: E402
     InstanceMaskObjectsDef,
     ObjectSegmentations,
     Observations,
     ObservationFrame,
     SceneSetup,
 )
-from psdframe import Frame
+from psdframe import Frame  # noqa: E402
 
-from helpers.debug_visualize import DebugVisualizer
+from helpers.debug_visualize import DebugVisualizer  # noqa: E402
 
 logger = logging.getLogger("sai3d-segmenter")
 
@@ -350,7 +349,7 @@ def _generate_masks_for_frame(frame: Frame, mask_generator, cache_dir: Optional[
 
     Returns (H, W) int array with mask label per pixel (starting from 0, -1 = bg).
     """
-    from helpers.sam_utils import get_sam_by_iou, my_prepare_image, num_to_natural
+    from helpers.sam_utils import get_sam_by_iou, num_to_natural
 
     # Prepare CHW tensor on CUDA from frame color
     color_np = frame.color.cpu().numpy()  # (H, W, 3) float32 0-1
@@ -479,9 +478,9 @@ def _ensure_segmentator_ply(ply_path: Path) -> Path:
 # ---------------------------------------------------------------------------
 
 
-def _make_args_namespace() -> types.SimpleNamespace:
+def _make_args_namespace() -> _types.SimpleNamespace:
     """Create the args namespace expected by SAI3DBase."""
-    return types.SimpleNamespace(
+    return _types.SimpleNamespace(
         max_neighbor_distance=MAX_NEIGHBOR_DISTANCE,
         similar_metric=SIMILAR_METRIC,
         view_freq=VIEW_FREQ,
@@ -526,7 +525,7 @@ class PipelineSAI3D:
                 kwargs["seg_ids"] = seg_ids_source
             return ScanNet_SAI3D.get_seg_data(self_ref, **kwargs)
 
-        self.base.get_seg_data = types.MethodType(_get_seg_data, self.base)
+        self.base.get_seg_data = _types.MethodType(_get_seg_data, self.base)
 
         # Set up all the attributes SAI3DBase.assign_label() needs
         self.base.masks = masks  # (M, H, W)
@@ -947,6 +946,7 @@ def initialize_scene(
     scene: SceneSetup,
     intermediate_outputs_path: Optional[Path] = None,
     with_workspace_mask_filter: bool = False,
+    mesh_path: Optional[Path] = None,
 ) -> ObjectSegmentations:
     """Run the full SAI3D pipeline on the given observations.
 
@@ -975,8 +975,12 @@ def initialize_scene(
     dbg.save_frames(frames)
 
     # ---- 2. TSDF mesh reconstruction ----
-    logger.info("Reconstructing TSDF mesh …")
-    mesh = _extract_mesh_bounded_with_res(frames, depth_trunc=2, mesh_res=1024)
+    if mesh_path is None:
+        raise ValueError("mesh_path is required")
+    if not mesh_path.exists():
+        raise FileNotFoundError(f"Mesh not found at {mesh_path}")
+    logger.info("Loading mesh from %s", mesh_path)
+    mesh = o3d.io.read_triangle_mesh(str(mesh_path))
     mesh_vertices = np.asarray(mesh.vertices).astype(np.float32)
     logger.info("Mesh has %d vertices, %d triangles", len(mesh.vertices), len(mesh.triangles))
     dbg.save_mesh(mesh)
@@ -984,14 +988,6 @@ def initialize_scene(
     # ---- 3. Workspace voxel grid ----
     workspace_voxels = get_workspace_voxels(scene)
     dbg.save_workspace_voxels(workspace_voxels)
-
-    # Crop mesh to workspace bounding box before voxel-accurate workspace crop
-    mesh = _crop_mesh_to_workspace_bbox(mesh, workspace_voxels)
-    logger.info("BBox-cropped mesh has %d vertices, %d triangles", len(mesh.vertices), len(mesh.triangles))
-    mesh = _crop_mesh_to_workspace(mesh, workspace_voxels)
-    mesh_vertices = np.asarray(mesh.vertices).astype(np.float32)
-    logger.info("Workspace-cropped mesh has %d vertices, %d triangles", len(mesh.vertices), len(mesh.triangles))
-    dbg.save_mesh(mesh)
 
     # ---- 4. Export PLY + run Segmentator ----
     work_dir = intermediate_outputs_path if intermediate_outputs_path is not None else Path("/tmp/sai3d_work")

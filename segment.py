@@ -17,7 +17,7 @@ import numpy as np
 import torch
 import tyro
 
-from initializerdefs import Observations, SceneSetup, load_observations_from_transforms_path
+from initializerdefs import Observations, SceneSetup, get_mesh_path_for_transforms, load_observations_from_transforms_path
 from segmenter import initialize_scene
 
 
@@ -81,6 +81,7 @@ def run() -> None:
             scene,
             intermediate_outputs_path=output_dir,
             with_workspace_mask_filter=args.with_workspace_mask_filter,
+            mesh_path=get_mesh_path_for_transforms(args.transforms_path),
         )
 
         output_path = output_dir / "objectsdef.pkl"
