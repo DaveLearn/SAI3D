@@ -57,8 +57,8 @@ numpy = "<2.0"
 sai3d = { path = ".", editable = true }
 semantic-sam = { path = "./Semantic-SAM", editable = true }
 detectron2 = { git="https://github.com/MaureenZOU/detectron2-xyz.git" }
-psdframe = { git = "ssh://git@github.com/DaveLearn/deg.git", tag="initializerdefs/v0.5.1", subdirectory = "packages/psdframe" }
-initializerdefs = { git = "ssh://git@github.com/DaveLearn/deg.git", subdirectory = "packages/initializerdefs", tag="initializerdefs/v0.5.1" }
+psdframe = { git = "ssh://git@github.com/DaveLearn/deg.git", tag="initializerdefs/v0.5.2", subdirectory = "packages/psdframe" }
+initializerdefs = { git = "ssh://git@github.com/DaveLearn/deg.git", subdirectory = "packages/initializerdefs", tag="initializerdefs/v0.5.2" }
 
 [tool.pixi.dependencies]
 cuda-version = "12.6.*"
