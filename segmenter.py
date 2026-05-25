@@ -1172,4 +1172,7 @@ def initialize_scene(
 
     logger.info("Initialized %d objects (after table removal)", len(valid_ids))
     dbg.save_pixel_masks(frames, instance_groups)
-    return ObjectSegmentations(object_segmentations=instance_mask_objects)
+    return ObjectSegmentations(
+        object_segmentations=instance_mask_objects,
+        mesh_vertex_instance_ids=vertex_labels_filtered,
+    )
