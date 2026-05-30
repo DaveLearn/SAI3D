@@ -14,6 +14,7 @@ import logging
 import math
 import os
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -966,7 +967,13 @@ def initialize_scene(
         intermediate_outputs_path.mkdir(parents=True, exist_ok=True)
 
     # Debug visualizer (activated by SAI3D_DEBUG=1 env var)
-    dbg_dir = (intermediate_outputs_path if intermediate_outputs_path is not None else Path("/tmp/sai3d_work")) / "debug"
+    if intermediate_outputs_path is not None:
+        work_dir = intermediate_outputs_path
+    else:
+        work_dir = Path(tempfile.mkdtemp(prefix="sai3d_"))
+    work_dir.mkdir(parents=True, exist_ok=True)
+
+    dbg_dir = work_dir / "debug"
     dbg = DebugVisualizer(dbg_dir)
 
     # ---- 1. Convert frames ----
@@ -990,7 +997,6 @@ def initialize_scene(
     dbg.save_workspace_voxels(workspace_voxels)
 
     # ---- 4. Export PLY + run Segmentator ----
-    work_dir = intermediate_outputs_path if intermediate_outputs_path is not None else Path("/tmp/sai3d_work")
     work_dir.mkdir(parents=True, exist_ok=True)
     ply_path = work_dir / "mesh.ply"
     o3d.io.write_triangle_mesh(str(ply_path), mesh)
