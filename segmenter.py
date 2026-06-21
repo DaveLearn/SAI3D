@@ -43,6 +43,10 @@ from initializerdefs import (  # noqa: E402
     Observations,
     ObservationFrame,
     SceneSetup,
+    runtime_start,
+    runtime_stop,
+    runtime_pause,
+    runtime_resume,
 )
 from psdframe import Frame  # noqa: E402
 
@@ -976,6 +980,8 @@ def initialize_scene(
     dbg_dir = work_dir / "debug"
     dbg = DebugVisualizer(dbg_dir)
 
+    _rt = runtime_start("sai3d", scene=observations.id, n_frames=len(observations.frames))
+
     # ---- 1. Convert frames ----
     logger.info("Converting %d observation frames …", len(observations.frames))
     frames = [get_dataset_frame_from_observation_frame(f) for f in observations.frames]
@@ -1012,7 +1018,9 @@ def initialize_scene(
 
     # ---- 5. Semantic-SAM 2D masks ----
     logger.info("Generating Semantic-SAM 2D masks …")
+    runtime_pause(_rt)  # exclude Semantic-SAM checkpoint load from the timed compute
     mask_generator = _build_mask_generator()
+    runtime_resume(_rt)
     mask_cache_dir = work_dir / "semantic_sam_masks" if intermediate_outputs_path is not None else None
 
     all_masks = []
@@ -1127,7 +1135,9 @@ def initialize_scene(
         raise RuntimeError("instance grouping failed")
         # instance_groups = _vertex_labels_to_pixel_masks_vectorized(mesh_vertices, vertex_labels, frames)
 
-    # Determine valid object IDs (appear in at least 3 frames)
+    # Determine valid object IDs (appear in multiple frames). The usual rule is
+    # >=3, but with only 3 views that demands the object appear in *every* frame,
+    # which is too strict, so relax to >=2 when there are <=3 views.
     all_label_ids = np.unique(vertex_labels)
     all_label_ids = all_label_ids[all_label_ids > 0]
 
@@ -1137,8 +1147,9 @@ def initialize_scene(
             if np.any(mask == lbl):
                 frame_counts[lbl] += 1
 
-    valid_ids = np.array([lbl for lbl, cnt in frame_counts.items() if cnt >= 3])
-    logger.info("Labels in >= 3 frames: %d / %d", len(valid_ids), len(all_label_ids))
+    min_frame_count = 2 if len(frames) <= 3 else 3
+    valid_ids = np.array([lbl for lbl, cnt in frame_counts.items() if cnt >= min_frame_count])
+    logger.info("Labels in >= %d frames: %d / %d", min_frame_count, len(valid_ids), len(all_label_ids))
 
     # Zero out invalid IDs in masks
     for name in instance_groups:
@@ -1178,6 +1189,7 @@ def initialize_scene(
 
     logger.info("Initialized %d objects (after table removal)", len(valid_ids))
     dbg.save_pixel_masks(frames, instance_groups)
+    runtime_stop(_rt)
     return ObjectSegmentations(
         object_segmentations=instance_mask_objects,
         mesh_vertex_instance_ids=vertex_labels_filtered,
