@@ -1135,9 +1135,7 @@ def initialize_scene(
         raise RuntimeError("instance grouping failed")
         # instance_groups = _vertex_labels_to_pixel_masks_vectorized(mesh_vertices, vertex_labels, frames)
 
-    # Determine valid object IDs (appear in multiple frames). The usual rule is
-    # >=3, but with only 3 views that demands the object appear in *every* frame,
-    # which is too strict, so relax to >=2 when there are <=3 views.
+    # Determine valid object IDs (appear in multiple (>=3) frames). 
     all_label_ids = np.unique(vertex_labels)
     all_label_ids = all_label_ids[all_label_ids > 0]
 
@@ -1147,7 +1145,7 @@ def initialize_scene(
             if np.any(mask == lbl):
                 frame_counts[lbl] += 1
 
-    min_frame_count = 2 if len(frames) <= 3 else 3
+    min_frame_count = 3
     valid_ids = np.array([lbl for lbl, cnt in frame_counts.items() if cnt >= min_frame_count])
     logger.info("Labels in >= %d frames: %d / %d", min_frame_count, len(valid_ids), len(all_label_ids))
 
