@@ -67,6 +67,10 @@ else
     exit 0
   fi
   echo "[build_deps] Building MultiScaleDeformableAttention..."
-  (cd "$MSDA_DIR" && bash make.sh)
+  # NOTE: do not use the vendored make.sh -- it runs `setup.py install --user`,
+  # which drops the egg in ~/.local/lib/python3.11/site-packages where it is
+  # picked up by every other python3.11 environment on the machine and is built
+  # against this env's torch ABI. Install into the pixi env instead.
+  python -m pip install --no-build-isolation --no-deps --no-cache-dir "$MSDA_DIR"
   echo "[build_deps] Build complete."
 fi

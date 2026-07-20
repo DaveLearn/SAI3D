@@ -72,6 +72,9 @@ ca-certificates = ">=2026.1.4,<2027"
 certifi = ">=2026.1.4,<2027"
 setuptools = "<70"
 wheel = "*"
+# Needed by scripts/build_deps.sh to install the MultiScaleDeformableAttention
+# CUDA op into this env.
+pip = ">=24"
 
 
 [tool.pixi.tasks]

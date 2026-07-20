@@ -4,3 +4,7 @@
 [submodule "Semantic-SAM"]
 	path = Semantic-SAM
 	url = https://github.com/UX-Decoder/Semantic-SAM.git
+	# The editable install and the MSDA build drop egg-info/build dirs inside
+	# this submodule. It is upstream's repo, so we cannot .gitignore them there;
+	# hide untracked files instead (real modifications still show).
+	ignore = untracked
