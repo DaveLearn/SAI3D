@@ -5,6 +5,24 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MSDA_DIR="$ROOT_DIR/Semantic-SAM/semantic_sam/body/encoder/ops"
 MSDA_SO="$MSDA_DIR/MultiScaleDeformableAttention*.so"
 
+# Decide the CUDA arch list explicitly rather than inheriting one.
+#
+# conda's cuda-nvcc activation exports TORCH_CUDA_ARCH_LIST only "if unset", so
+# whatever the launching shell had wins. Launching this from an activated root
+# project environment leaks its arch list into this project's nvcc 12.6, and an
+# arch such as 10.1/12.0 fails with "Unsupported gpu architecture". Clearing it
+# lets torch auto-detect the local GPU, which this toolchain can always build.
+#
+#   pixi run build_deps                                # auto-detect
+#   SAI3D_CUDA_ARCH_LIST="8.0;8.6" pixi run build_deps # explicit
+if [ -n "${SAI3D_CUDA_ARCH_LIST:-}" ]; then
+  export TORCH_CUDA_ARCH_LIST="${SAI3D_CUDA_ARCH_LIST}"
+  printf '[build_deps] building for arch list: %s\n' "${TORCH_CUDA_ARCH_LIST}"
+else
+  unset TORCH_CUDA_ARCH_LIST
+  printf '[build_deps] building for auto-detected GPU arch\n'
+fi
+
 # Ensure CUDA toolkit from pixi/conda is discoverable
 if [ -n "${CONDA_PREFIX:-}" ]; then
   if [ -x "$CONDA_PREFIX/bin/nvcc" ]; then
