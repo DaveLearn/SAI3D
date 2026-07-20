@@ -92,3 +92,13 @@ no-build-isolation = ["detectron2"]
 [tool.pixi.activation.env]
 CPATH = "${PIXI_PROJECT_ROOT}/.pixi/envs/default/include:${PIXI_PROJECT_ROOT}/.pixi/envs/default/targets/x86_64-linux/include"
 CUDA_HOME = "${PIXI_PROJECT_ROOT}/.pixi/envs/default"
+# Pin the host compiler by absolute path rather than letting nvcc find "gcc"/
+# "g++" via PATH search. Compiling detectron2 (no-build-isolation, invoked
+# directly by `pixi install`) from inside an already-activated parent shell
+# (e.g. a launcher run from a root `deg` pixi shell) can otherwise reach the
+# parent's own gcc instead of this project's -- and this project pins gcc 12.x
+# specifically because its CUDA 12.6 toolchain rejects gcc >13 with "unsupported
+# GNU version", which the root deg env's gcc 14.3.0 is well past.
+CC = "${PIXI_PROJECT_ROOT}/.pixi/envs/default/bin/gcc"
+CXX = "${PIXI_PROJECT_ROOT}/.pixi/envs/default/bin/g++"
+CUDAHOSTCXX = "${PIXI_PROJECT_ROOT}/.pixi/envs/default/bin/g++"

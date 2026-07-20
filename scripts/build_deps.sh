@@ -34,6 +34,20 @@ if [ -n "${CONDA_PREFIX:-}" ]; then
   fi
 fi
 
+# Pin the host compiler by absolute path rather than letting nvcc/ninja find
+# "gcc"/"g++" via PATH search. When this script runs nested inside an already
+# activated parent project's shell (e.g. a launcher invoked from a root `deg`
+# pixi shell), the parent's own gcc can end up ahead on PATH for the actual
+# build subprocess even though `pixi run` in this project reports its own bin
+# directory first -- and this project pins gcc 12.x specifically because nvcc
+# 12.4/12.6 rejects gcc >13 ("unsupported GNU version"), which the root deg
+# env's gcc 14.3.0 is well past.
+if [ -n "${CONDA_PREFIX:-}" ] && [ -x "$CONDA_PREFIX/bin/gcc" ] && [ -x "$CONDA_PREFIX/bin/g++" ]; then
+  export CC="$CONDA_PREFIX/bin/gcc"
+  export CXX="$CONDA_PREFIX/bin/g++"
+  export CUDAHOSTCXX="$CXX"
+fi
+
 if ! command -v nvcc >/dev/null 2>&1; then
   if [ -n "${CONDA_PREFIX:-}" ] && [ -x "$CONDA_PREFIX/bin/nvcc" ]; then
     export PATH="$CONDA_PREFIX/bin:$PATH"
