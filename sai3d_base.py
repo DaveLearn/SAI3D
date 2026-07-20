@@ -81,18 +81,13 @@ class SAI3DBase:
 
         # progressive region growing,
         # the resulting oversegmentations of last iteration can be the primitive of next iteration.
-        for stage_idx in range(len(thres_connect)):
-            logger.info(
-                "Region growing stage %d/%d (threshold=%.3f) ...",
-                stage_idx + 1, len(thres_connect), thres_connect[stage_idx],
-            )
+        for i in range(len(thres_connect)):
             self.seg_ids, self.seg_num, self.seg_members, self.seg_indirect_neighbors = self.get_seg_data(
                 base_dir=self.base_dir,
                 scene_id=self.scene_id,
                 max_neighbor_distance=self.max_neighbor_distance,
                 seg_ids=points_labels)
             self.seg_direct_neighbors = self.seg_indirect_neighbors[0]
-            logger.info("  Primitives at this stage: %d", self.seg_num)
             seg_adj = self.get_seg_adjacency(
                 points_any=points,
                 similar_meric=similar_metric,
@@ -100,19 +95,14 @@ class SAI3DBase:
                 points_seen=points_seen)
             seg_labels = self.assign_seg_label(
                 seg_adj,
-                thres_connect[stage_idx],
+                thres_connect[i],
                 max_neighbor_distance=max_neighbor_distance)
 
-            n_regions = len(np.unique(seg_labels[seg_labels > 0]))
-            logger.info("  Regions after stage %d: %d", stage_idx + 1, n_regions)
-
             # only conduct postprocessing in the last iteration
-            if stage_idx == len(thres_connect) - 1 and self.args.thres_merge > 0:
+            if i == len(thres_connect) - 1 and self.args.thres_merge > 0:
                 seg_labels = self.merge_small_segs(seg_labels,
                                                    self.args.thres_merge,
                                                    seg_adj)
-                n_regions_merged = len(np.unique(seg_labels[seg_labels > 0]))
-                logger.info("  Regions after merge: %d", n_regions_merged)
 
                 # assign primitive labels to member points
             points_labels = np.zeros(self.N, dtype=int)

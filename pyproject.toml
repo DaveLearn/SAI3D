@@ -81,7 +81,6 @@ sam_auto_generation = "python sam_auto_generation.py"
 sam_scannet = "bash scripts/sam_scannet.sh"
 seg_scannet = "bash scripts/seg_scannet.sh"
 run_openmask3d_scannet200 = "bash scripts/run_openmask3d_scannet200.sh"
-view = "python view_ply.py"
 build_deps = "bash scripts/build_deps.sh"
 
 [tool.pixi.pypi-options]

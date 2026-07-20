@@ -50,8 +50,6 @@ from initializerdefs import (  # noqa: E402
 )
 from psdframe import Frame  # noqa: E402
 
-from helpers.debug_visualize import DebugVisualizer  # noqa: E402
-
 logger = logging.getLogger("sai3d-segmenter")
 
 # ---------------------------------------------------------------------------
@@ -193,24 +191,6 @@ def _erode_voxel_grid_xy(voxel_grid: o3d.geometry.VoxelGrid, layers: int) -> o3d
     return voxel_grid
 
 
-def _maybe_visualize_workspace_voxels(table_pcd: o3d.geometry.PointCloud, workspace_voxels: o3d.geometry.VoxelGrid) -> None:
-    if os.environ.get("SAI3D_DEBUG_WORKSPACE_O3D", "0") != "1":
-        return
-
-    table_vis = copy.deepcopy(table_pcd)
-    table_vis.paint_uniform_color([0.8, 0.8, 0.8])
-
-    try:
-        o3d.visualization.draw_geometries(
-            [table_vis, workspace_voxels],
-            window_name="SAI3D Workspace Voxels Debug",
-            width=1280,
-            height=800,
-        )
-    except Exception:
-        logger.exception("Failed to render workspace voxel debug view")
-
-
 def get_workspace_voxels(scene: SceneSetup, shrink_xy_m: float = 0.04) -> o3d.geometry.VoxelGrid:
     table_xyz = scene.ground_gaussians.xyz
     table_plane = scene.ground_plane
@@ -234,7 +214,6 @@ def get_workspace_voxels(scene: SceneSetup, shrink_xy_m: float = 0.04) -> o3d.ge
 
     layers = max(0, int(np.round(shrink_xy_m / voxel_grid.voxel_size)))
     voxel_grid = _erode_voxel_grid_xy(voxel_grid, layers)
-    _maybe_visualize_workspace_voxels(pcd, voxel_grid)
     return voxel_grid
 
 
@@ -970,22 +949,17 @@ def initialize_scene(
     if intermediate_outputs_path is not None:
         intermediate_outputs_path.mkdir(parents=True, exist_ok=True)
 
-    # Debug visualizer (activated by SAI3D_DEBUG=1 env var)
     if intermediate_outputs_path is not None:
         work_dir = intermediate_outputs_path
     else:
         work_dir = Path(tempfile.mkdtemp(prefix="sai3d_"))
     work_dir.mkdir(parents=True, exist_ok=True)
 
-    dbg_dir = work_dir / "debug"
-    dbg = DebugVisualizer(dbg_dir)
-
     _rt = runtime_start("sai3d", scene=observations.id, n_frames=len(observations.frames))
 
     # ---- 1. Convert frames ----
     logger.info("Converting %d observation frames …", len(observations.frames))
     frames = [get_dataset_frame_from_observation_frame(f) for f in observations.frames]
-    dbg.save_frames(frames)
 
     # ---- 2. TSDF mesh reconstruction ----
     if mesh_path is None:
@@ -996,11 +970,9 @@ def initialize_scene(
     mesh = o3d.io.read_triangle_mesh(str(mesh_path))
     mesh_vertices = np.asarray(mesh.vertices).astype(np.float32)
     logger.info("Mesh has %d vertices, %d triangles", len(mesh.vertices), len(mesh.triangles))
-    dbg.save_mesh(mesh)
 
     # ---- 3. Workspace voxel grid ----
     workspace_voxels = get_workspace_voxels(scene)
-    dbg.save_workspace_voxels(workspace_voxels)
 
     # ---- 4. Export PLY + run Segmentator ----
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -1013,7 +985,6 @@ def initialize_scene(
         seg_data = json.load(f)
     seg_ids = np.array(seg_data["segIndices"], dtype=np.int32)
     logger.info("Loaded %d superpoint assignments from %s", len(seg_ids), segs_json_path)
-    dbg.save_superpoints(mesh, seg_ids)
     del seg_data
 
     # ---- 5. Semantic-SAM 2D masks ----
@@ -1086,7 +1057,6 @@ def initialize_scene(
         )
     else:
         logger.info("2D workspace overlap filter disabled")
-    dbg.save_masks_2d(frames, masks_np)
 
     # ---- 6. Run SAI3D ----
     logger.info("Running SAI3D progressive region growing …")
@@ -1107,10 +1077,9 @@ def initialize_scene(
     )
     vertex_labels = pipeline.run()
     logger.info("SAI3D produced %d unique labels", len(np.unique(vertex_labels)))
-    dbg.save_segmented_mesh(mesh, vertex_labels)
 
     # ---- 7. Filter by workspace + remove table ----
-    vertex_labels_raw = vertex_labels.copy()  # save pre-filter copy for debug comparison
+    vertex_labels_raw = vertex_labels.copy()  # pre-filter copy for removal stats logging
     vertex_ids_before_workspace_filter = np.unique(vertex_labels_raw)
     vertex_ids_before_workspace_filter = vertex_ids_before_workspace_filter[vertex_ids_before_workspace_filter > 0]
     labeled_vertices_before_workspace_filter = int(np.count_nonzero(vertex_labels_raw > 0))
@@ -1161,10 +1130,9 @@ def initialize_scene(
         for name in instance_groups:
             instance_groups[name][instance_groups[name] == table_id] = 0
 
-    # Build final vertex labels for debug (apply same filtering to vertex array)
+    # Build final vertex labels (apply same filtering to vertex array)
     vertex_labels_filtered = vertex_labels.copy()
     vertex_labels_filtered[~np.isin(vertex_labels_filtered, valid_ids)] = 0
-    dbg.save_filtered_mesh(mesh, vertex_labels_raw, vertex_labels_filtered, table_id, valid_ids)
 
     # ---- 8. Build InstanceMaskObjectsDef ----
     frame_ids: List[int] = []
@@ -1186,7 +1154,6 @@ def initialize_scene(
     )
 
     logger.info("Initialized %d objects (after table removal)", len(valid_ids))
-    dbg.save_pixel_masks(frames, instance_groups)
     runtime_stop(_rt)
     return ObjectSegmentations(
         object_segmentations=instance_mask_objects,
