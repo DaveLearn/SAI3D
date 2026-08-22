@@ -293,14 +293,27 @@ def _ensure_checkpoint() -> Path:
         return ckpt_path
     logger.info("Downloading Semantic-SAM checkpoint from %s …", CHECKPOINT_URL)
     CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
-    import urllib.request
-    import ssl
-    import certifi
+    import shutil
 
-    ssl_context = ssl.create_default_context(cafile=certifi.where())
-    with urllib.request.urlopen(CHECKPOINT_URL, context=ssl_context) as response:
-        with open(ckpt_path, "wb") as out_file:
-            out_file.write(response.read())
+    # Download to a temp name and rename on success, so an interrupted job
+    # never leaves a truncated .pth that passes the exists() check above.
+    partial_path = ckpt_path.with_name(CHECKPOINT_FILENAME + ".partial")
+    wget = shutil.which("wget")
+    if wget is not None:
+        subprocess.run(
+            [wget, "--tries=3", "--timeout=60", "-O", str(partial_path), CHECKPOINT_URL],
+            check=True,
+        )
+    else:
+        import urllib.request
+        import ssl
+        import certifi
+
+        ssl_context = ssl.create_default_context(cafile=certifi.where())
+        with urllib.request.urlopen(CHECKPOINT_URL, context=ssl_context, timeout=60) as response:
+            with open(partial_path, "wb") as out_file:
+                shutil.copyfileobj(response, out_file, length=1 << 20)
+    partial_path.replace(ckpt_path)
     logger.info("Checkpoint saved to %s", ckpt_path)
     return ckpt_path
 
