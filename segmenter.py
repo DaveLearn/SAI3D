@@ -301,7 +301,7 @@ def _ensure_checkpoint() -> Path:
     wget = shutil.which("wget")
     if wget is not None:
         subprocess.run(
-            [wget, "--tries=3", "--timeout=60", "-O", str(partial_path), CHECKPOINT_URL],
+            [wget, "--quiet", "--tries=3", "--timeout=60", "-O", str(partial_path), CHECKPOINT_URL],
             check=True,
         )
     else:
